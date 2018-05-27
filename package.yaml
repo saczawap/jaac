@@ -30,6 +30,9 @@ library:
     - text
     - transformers
     - containers
+  ghc-options:
+    - -fwarn-unused-imports
+
 
 executables:
   jaac-exe:
