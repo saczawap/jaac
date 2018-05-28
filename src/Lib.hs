@@ -12,7 +12,12 @@ example = do
     _ <- Client.bindQueue channel exchangeName queueName
     _ <- Client.publish connection exchangeName routingKey (BS8.pack "A MESSAGE")
     _ <- putStrLn "Starting consuming messages"
-    consumeLoop connection
+    consume connection
+
+consume sock = do
+    _ <- Client.startConsuming sock queueName
+    _ <- consumeLoop sock
+    return ()
 
 consumeLoop sock = (do
     Client.Message tag content <- Client.consume sock queueName

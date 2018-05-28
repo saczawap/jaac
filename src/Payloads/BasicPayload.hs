@@ -25,7 +25,8 @@ data BasicPayload =
         consumerTag :: ConsumerTag,
         deliveryTag :: DeliveryTag,
         redelivered :: Redelivered,
-        exchange :: ExchangeName
+        exchange :: ExchangeName,
+        routingKey :: ShortString
     } | Ack {
         deliveryTag :: DeliveryTag,
         multiple :: Bit
@@ -40,7 +41,7 @@ instance Binary BasicPayload where
 
 getBasicPayload :: ClassId -> Get BasicPayload
 getBasicPayload 21 = ConsumeOk <$> get
-getBasicPayload 60 = Deliver <$> get <*> get <*> get <*> get
+getBasicPayload 60 = Deliver <$> get <*> get <*> get <*> get <*> get
 
 getBasicPayload z = trace ("ZZZ:" ++ (show z)) (ConsumeOk <$> get)
 
