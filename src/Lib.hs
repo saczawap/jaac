@@ -2,11 +2,16 @@ module Lib where
 
 import qualified Data.ByteString.Char8 as BS8
 import qualified Client as Client
+import Connection 
+import AppIO
+
+toIO :: AppIO a -> IO a
+toIO x = runIO x
 
 example :: IO ()
 example = do 
     connection <- Client.openConnection serverAddress
-    channel <- Client.openChannel connection 
+    channel <- toIO (Client.openChannel connection)
     _ <- Client.declareExchange channel exchangeName
     queue <- Client.declareQueue channel queueName
     _ <- Client.bindQueue channel exchangeName queueName
@@ -29,4 +34,4 @@ exchangeName = "exchangeName"
 queueName = "queueName"
 routingKey = "routingKey"
 
-serverAddress = Client.ServerAddress "172.17.0.2" "5672"
+serverAddress = ServerAddress "172.17.0.2" "5672"

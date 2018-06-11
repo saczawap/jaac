@@ -1,6 +1,6 @@
 module Client where
 {-# LANGUAGE OverloadedStrings #-}
-
+{-# InstanceSigs #-}
 
 import Network.Socket hiding (send, sendTo, recv, recvFrom)
 import qualified Data.ByteString.Char8 as BS8
@@ -36,13 +36,10 @@ import Data.Bifunctor
 import Control.Monad.Trans.Class
 import Control.Monad
 import Control.Concurrent
+import Control.Monad.IO.Class
 
-type MM = (MVar (Map.Map Int (Chan Frame)))
+import Connection
 
-data ServerAddress = ServerAddress {address :: String, port :: String}
-data Connection = ConnectionHandler (MVar Int) (Chan Frame) (MM)
-data Channel = ChannelHandler (Chan Frame) (Chan Frame)
-data Queue = QueueHandler
 
 getFrameSize = do
     _ <- getWord8
@@ -144,34 +141,29 @@ plain = E.encodeUtf8 $ (T.cons nul (T.pack "guest")) `T.append` (T.cons nul (T.p
   where
     nul = '\0'
 
-modifyFun :: Int -> IO (Int, Int)    
-modifyFun val = return ((val + 1), val)
 
-takeChannelNumber :: Connection -> IO Int
-takeChannelNumber (ConnectionHandler mvar _ _) = modifyMVar mvar modifyFun 
 
-addChannelChan :: Connection -> Int -> IO (Chan Frame)
-addChannelChan (ConnectionHandler _ _ mapa) n = do
-    newChan <- newChan :: (IO (Chan Frame))
-    _ <- modifyMVar_ mapa (\m -> return (Map.insert n newChan m))
-    return newChan
 
-receiveMessage :: Int -> Connection -> IO Frame
-receiveMessage chn (ConnectionHandler _ _ mapa) = (do
+receiveMsg :: Int -> Connection -> IO Frame
+receiveMsg chn (ConnectionHandler _ _ mapa) = (do
     m <- readMVar mapa
-    return $ m Map.! chn) >>= receiveMessage'
+    return $ m Map.! chn) >>= receiveMsg'
 
-receiveMessage' :: Chan Frame -> IO Frame
-receiveMessage' chan = readChan chan
+receiveMsg' :: Chan Frame -> IO Frame
+receiveMsg' chan = readChan chan
 
-receiveMessage'' :: Channel -> IO Frame
-receiveMessage'' (ChannelHandler out inChan) = receiveMessage' inChan
+receiveMsg'' :: Channel -> IO Frame
+receiveMsg'' (ChannelHandler out inChan) = receiveMsg' inChan
 
-openChannel :: Connection -> IO Channel
+
+
+
+
+openChannel :: (MonadIO m, SendMessage m, ReceiveMessage m, ModifyChannelMap m) => Connection -> m Channel
 openChannel connection = do
     chanNum <- takeChannelNumber connection
     inChan <- addChannelChan connection chanNum
-    sendMsg connection (openCh (fromIntegral chanNum))
+    sendMessage connection (openCh (fromIntegral chanNum))
     f <- receiveMessage chanNum connection
     let ConnectionHandler _ out _ = connection 
     return $ ChannelHandler out inChan
@@ -181,7 +173,7 @@ openCh chanNum = getChannelFrame (ChannelPayload.Open) chanNum
 declareExchange :: Channel -> String -> IO ()
 declareExchange (ChannelHandler out inChan) name = do 
     sendMsg' out (de name)
-    frame <- receiveMessage' inChan
+    frame <- receiveMsg' inChan
     putStrLn (show frame)
     return ()
 
@@ -190,7 +182,7 @@ de name = getExchangeFrame $ ExchangePayload.Declare (ExchangeName $ ss name) (s
 declareQueue :: Channel -> String -> IO Queue 
 declareQueue (ChannelHandler out inChan) name = do
     sendMsg' out (dq name)
-    frame <- receiveMessage' inChan
+    frame <- receiveMsg' inChan
     putStrLn (show frame)
     return QueueHandler
 
@@ -199,7 +191,7 @@ dq name = getQueueFrame $ QueuePayload.Declare (ss name) False False False False
 bindQueue :: Channel -> String -> String -> IO ()
 bindQueue channel exName qName = do
     sendMsg'' channel (bq exName qName)
-    frame <- receiveMessage'' channel
+    frame <- receiveMsg'' channel
     putStrLn (show frame)
 
 bq exName qName = getQueueFrame $ QueuePayload.Bind (ss qName) (ExchangeName $ ss exName) (ss "routingKey") False (FieldTable []) 
@@ -222,7 +214,7 @@ hp str = getHeaderFrame $ HeaderPayload.HP ((fromIntegral $ BL.length (BL.fromSt
 pp str = getContentFrame $ ContentPayload.CP $ BL.fromStrict str
 
 pullFrame :: Connection -> IO Frame
-pullFrame connection = receiveMessage 1 connection
+pullFrame connection = receiveMsg 1 connection
 
     
 startConsuming :: Connection -> String -> IO ()
